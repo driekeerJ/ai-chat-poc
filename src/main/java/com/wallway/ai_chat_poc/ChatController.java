@@ -1,15 +1,19 @@
 package com.wallway.ai_chat_poc;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
 import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("api")
 public class ChatController {
+
     private static final String DEFAULT_SYSTEM_PROMPT = """
             You are a virtual football coach, expert in football tactics, training, and player development.
             Be knowledgeable, motivating, and provide practical advice for players and teams.
@@ -18,8 +22,13 @@ public class ChatController {
     private final ChatClient chatClient;
 
     public ChatController(ChatClient.Builder chatClient) {
+        var chatMemory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+
         this.chatClient = chatClient
                 .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
                 .build();
     }
 
@@ -34,4 +43,5 @@ public class ChatController {
 
     record PromptRequest(String prompt) {
     }
+
 }

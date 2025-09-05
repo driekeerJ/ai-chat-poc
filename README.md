@@ -685,3 +685,72 @@ java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=loc
 ```
 
 And now open `http://localhost:8080`, just ask it a question.
+
+## Local memory
+The AI doesn't remember previous conversations because each request is completely independent - it's like talking to someone who has amnesia and forgets everything after each sentence. To make it remember, we need to store the conversation history and send it along with each new message so the AI can see the full context of what was discussed before.
+
+If you still have the application running, just tell it your name and then in the next prompt, ask it to tell you what your name is.
+
+As you can see, it doesn't remember.
+
+Lets update the ChatController:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import reactor.core.publisher.Flux;
+
+@RestController
+@RequestMapping("api")
+public class ChatController {
+
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
+            """;
+
+    private final ChatClient chatClient;
+
+    public ChatController(ChatClient.Builder chatClient) {
+        var chatMemory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+
+        this.chatClient = chatClient
+                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .build();
+    }
+
+    @PostMapping("/chat/stream")
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
+        return chatClient
+                .prompt()
+                .user(promptRequest.prompt())
+                .stream()
+                .content();
+    }
+
+    record PromptRequest(String prompt) {
+    }
+
+}
+```
+The basic change is that we are adding local memory and add that as an Advisor. Now you have Advisors and you have tools within Spring AI. Advisors, like ChatMemory and VectorDatabases are always there to help out. They will work side by side basically on every call being made. Tools, like api calls, calculations etcetera, are only used when the AI thinks it is a good idea to use them. 
+
+Now start the application again:
+
+```shell
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+And tell it your name. 
+Once it answered, ask it what your name was. 
