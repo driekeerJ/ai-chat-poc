@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("api")
@@ -13,6 +14,7 @@ public class ChatController {
             You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
             Be friendly, helpful, and concise in your responses.
             """;
+
     private final ChatClient chatClient;
 
     public ChatController(ChatClient.Builder chatClient) {
@@ -21,14 +23,13 @@ public class ChatController {
                 .build();
     }
 
-    @PostMapping("chat")
-    public String chat(@RequestBody PromptRequest promptRequest) {
-        var chatResponse = chatClient
+    @PostMapping("/chat/stream")
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
+        return chatClient
                 .prompt()
                 .user(promptRequest.prompt())
-                .call()
-                .chatResponse();
-        return (chatResponse != null) ? chatResponse.getResult().getOutput().getText() : null;
+                .stream()
+                .content();
     }
 
     record PromptRequest(String prompt) {

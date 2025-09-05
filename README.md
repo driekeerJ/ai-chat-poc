@@ -145,3 +145,61 @@ curl -X POST http://localhost:8080/api/chat \
 ```
 
 As you can see it answers it all at once. We also might be interested in having part of the answer already while it is generating the rest. For this we can use streaming. 
+
+## Use streaming for flow
+Change the controller by adding streaming:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+
+@RestController
+@RequestMapping("api")
+public class ChatController {
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
+            Be friendly, helpful, and concise in your responses.
+            """;
+
+    private final ChatClient chatClient;
+
+    public ChatController(ChatClient.Builder chatClient) {
+        this.chatClient = chatClient
+                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .build();
+    }
+
+    @PostMapping("/chat/stream")
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
+        return chatClient
+                .prompt()
+                .user(promptRequest.prompt())
+                .stream()
+                .content();
+    }
+
+    record PromptRequest(String prompt) {
+    }
+}
+```
+As you can see, we will now return a `Flux` so we can async return what we get. 
+
+Lets start the application again:
+```bash
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+And ask the same question but now on the stream endpoint:
+```bash
+curl -X POST http://localhost:8080/api/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Tell me a short story about unicorns in max 3 paragraphs?"}'
+```
+
+As you can see, the answer now comes in parts.
