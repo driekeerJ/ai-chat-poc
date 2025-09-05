@@ -1,17 +1,17 @@
 # ai-chat-poc
-## Step 1. Create project
+## Create project
 1. Go to `https://start.spring.io/`
 2. Choose at least `openAI`, `Thymeleaf` and `Web`
 3. Generate a project
 
-## Step 2. Register your key for openAI and the model you will use
+## Register your key for openAI and the model you will use
 Put the following setting in your `application.properties`. I have put it in my local properties that will not be uploaded to git, for obvious reasons.
 ```bash
 spring.ai.openai.api-key=YOUR_OPENAI_API_KEY
 spring.ai.openai.chat.options.model=gpt-4.1-nano
 ```
 
-## Step 3. Add a commandline runner to your application
+## Add a commandline runner to your application
 ```java
 package com.wallway.ai_chat_poc;
 
@@ -67,3 +67,81 @@ java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=loc
 ```
 
 Just ask it a question and see what it response it with. 
+
+## Now let's use a controller
+Lets first cleanup the basic application file by remove the commandline scanner:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class AiChatPocApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(AiChatPocApplication.class, args);
+	}
+}
+```
+And now create the following RestController in your system
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("api")
+public class ChatController {
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
+            Be friendly, helpful, and concise in your responses.
+            """;
+    private final ChatClient chatClient;
+
+    public ChatController(ChatClient.Builder chatClient) {
+        this.chatClient = chatClient
+                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .build();
+    }
+
+    @PostMapping("chat")
+    public String chat(@RequestBody PromptRequest promptRequest) {
+        var chatResponse = chatClient
+                .prompt()
+                .user(promptRequest.prompt())
+                .call()
+                .chatResponse();
+        return (chatResponse != null) ? chatResponse.getResult().getOutput().getText() : null;
+    }
+
+    record PromptRequest(String prompt) {
+    }
+}
+```
+
+Build and run your application
+```bash
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+And run the following curl command from your commandline:
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "How much do you like unicorns?"}'
+```
+
+Now try the following:
+```bash
+curl -X POST http://localhost:8080/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Tell me a short story about unicorns in max 3 paragraphs?"}'
+```
+
+As you can see it answers it all at once. We also might be interested in having part of the answer already while it is generating the rest. For this we can use streaming. 
