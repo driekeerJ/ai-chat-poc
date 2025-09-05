@@ -35,10 +35,10 @@ public class AiChatPocApplication {
     public CommandLineRunner cli(ChatClient.Builder chatClientBuilder) {
         return args -> {
             var chatClient = chatClientBuilder
-                .defaultSystem("You are a Unicorn Rentals Agent, expert in all sorts of things related to Unicorns and renting them.")
+                .defaultSystem("You are a virtual football coach, expert in football tactics, training, and player development.")
                 .build();
 
-            System.out.println("\nI am your Unicorn Rentals assistant.\n");
+            System.out.println("\nI am your virtual football coach.\n");
             try (Scanner scanner = new Scanner(System.in)) {
                 while (true) {
                     System.out.print("\nUSER: ");
@@ -98,8 +98,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("api")
 public class ChatController {
     private static final String DEFAULT_SYSTEM_PROMPT = """
-            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
-            Be friendly, helpful, and concise in your responses.
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
             """;
     private final ChatClient chatClient;
 
@@ -134,14 +134,14 @@ And run the following curl command from your commandline:
 ```bash
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "How much do you like unicorns?"}'
+  -d '{"prompt": "What are the key principles of effective football training?"}'
 ```
 
 Now try the following:
 ```bash
 curl -X POST http://localhost:8080/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Tell me a short story about unicorns in max 3 paragraphs?"}'
+  -d '{"prompt": "Tell me about football tactics in max 3 paragraphs?"}'
 ```
 
 As you can see it answers it all at once. We also might be interested in having part of the answer already while it is generating the rest. For this we can use streaming. 
@@ -162,8 +162,8 @@ import reactor.core.publisher.Flux;
 @RequestMapping("api")
 public class ChatController {
     private static final String DEFAULT_SYSTEM_PROMPT = """
-            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
-            Be friendly, helpful, and concise in your responses.
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
             """;
 
     private final ChatClient chatClient;
@@ -199,7 +199,7 @@ And ask the same question but now on the stream endpoint:
 ```bash
 curl -X POST http://localhost:8080/api/chat/stream \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Tell me a short story about unicorns in max 3 paragraphs?"}'
+  -d '{"prompt": "Tell me about football tactics in max 3 paragraphs?"}'
 ```
 
 As you can see, the answer now comes in parts.

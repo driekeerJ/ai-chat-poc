@@ -11,8 +11,8 @@ import reactor.core.publisher.Flux;
 @RequestMapping("api")
 public class ChatController {
     private static final String DEFAULT_SYSTEM_PROMPT = """
-            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
-            Be friendly, helpful, and concise in your responses.
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
             """;
 
     private final ChatClient chatClient;
