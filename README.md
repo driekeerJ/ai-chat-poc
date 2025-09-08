@@ -669,3 +669,219 @@ curl -X POST http://localhost:8080/api/load \
 ```
 
 As you can see it now searches the vector store, finds something and uses that. 
+## Tooling
+### Explanation
+Tools are like little external helpers you connect to an AI. On its own, the AI doesn’t know things like what today’s date is or what the weather will be tomorrow. By giving it a tool, you let the AI call out to another system that _does_ know this, and then use that information in its answer. So tools extend what the AI can do by giving it access to real data or specific actions.
+
+### Analogy
+Think of the AI as a very smart colleague who can reason well but doesn’t have internet or a calendar. By giving them tools, it’s like handing them a phone to call the weather service, or a diary to check today’s date. Suddenly they can combine their intelligence with up-to-date information, and the answers become both clever _and_ correct.
+### Implementation
+Before we do this, in the running application on [localhost](http://localhost:8080), ask it 
+```
+what should I wear when I play coming Saturday against a team in Utrecht
+```
+
+As you can see, it doesn't know. Let use some tooling. 
+First, let's create a folder 'tools' and add a DateTimeTool to get the datetime:
+```java
+package com.wallway.ai_chat_poc.tools;
+
+import java.time.format.DateTimeFormatter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.ai.tool.annotation.Tool;
+
+public class DateTimeTools {
+
+    private static final Logger logger = LoggerFactory.getLogger(DateTimeTools.class);
+
+    @Tool(description = "Get the current date and time")
+    public String getCurrentDateTime(String timeZone) {
+        return java.time.ZonedDateTime.now(java.time.ZoneId.of(timeZone))
+                .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+}
+```
+
+And a weather tool to get the temperature for a specific city on a specific day:
+
+```java
+package com.wallway.ai_chat_poc.tools;
+
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.ai.tool.annotation.Tool;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriUtils;
+
+public class WeatherTools {
+
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Tool(description = "Get weather forecast for a city on a specific date (format: YYYY-MM-DD)")
+    public String getWeather(String city, String date) {
+        try {
+            // Convert city to coordinates using Geocoding API
+            var encodedCity = UriUtils.encode(city, StandardCharsets.UTF_8);
+            var geocodingUrl = URI.create("https://geocoding-api.open-meteo.com/v1/search?name=" +
+                                         encodedCity + "&count=1");
+
+            var geocodingResponse = restTemplate.exchange(
+                geocodingUrl,
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+
+            var body = geocodingResponse.getBody();
+            var results = (body != null) ? (List<?>) body.getOrDefault("results", Collections.emptyList()) : Collections.emptyList();
+            if (results.isEmpty()) {
+                return "City not found: " + city;
+            }
+
+            var location = (Map<?, ?>) results.get(0);
+            var latitude = ((Number) location.get("latitude")).doubleValue();
+            var longitude = ((Number) location.get("longitude")).doubleValue();
+            var cityName = (String) location.get("name");
+
+            // Get weather data from Open-Meteo API
+            var weatherUrl = URI.create(
+                "https://api.open-meteo.com/v1/forecast" +
+                "?latitude=%s&longitude=%s".formatted(latitude, longitude) +
+                "&daily=temperature_2m_max,temperature_2m_min" +
+                "&timezone=auto" +
+                "&start_date=%s&end_date=%s".formatted(date, date)
+            );
+
+            var weatherResponse = restTemplate.exchange(
+                weatherUrl,
+                HttpMethod.GET,
+                null,
+                new ParameterizedTypeReference<Map<String, Object>>() {}
+            );
+
+            var weatherData = weatherResponse.getBody();
+            if (weatherData == null) {
+                return "Failed to retrieve weather data";
+            }
+
+            var dailyData = (Map<?, ?>) weatherData.get("daily");
+            var dailyUnits = (Map<?, ?>) weatherData.get("daily_units");
+
+            if (dailyData == null || dailyUnits == null) {
+                return "Weather data format is invalid";
+            }
+
+            var maxTempList = (List<?>) dailyData.get("temperature_2m_max");
+            var minTempList = (List<?>) dailyData.get("temperature_2m_min");
+
+            if (maxTempList == null || minTempList == null || maxTempList.isEmpty() || minTempList.isEmpty()) {
+                return "Temperature data not available for the specified date";
+            }
+
+            var maxTemp = ((Number) maxTempList.get(0)).doubleValue();
+            var minTemp = ((Number) minTempList.get(0)).doubleValue();
+            var unit = (String) dailyUnits.get("temperature_2m_max");
+
+            return """
+                   Weather for %s on %s:
+                   Min: %.1f%s, Max: %.1f%s
+                   """.formatted(cityName, date, minTemp, unit, maxTemp, unit);
+
+        } catch (Exception e) {
+            return "Error fetching weather data: " + e.getMessage();
+        }
+    }
+}
+```
+
+And now we just need to update the ChatController to use these tools:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import com.wallway.ai_chat_poc.tools.DateTimeTools;
+import com.wallway.ai_chat_poc.tools.WeatherTools;
+
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("api")
+public class ChatController {
+
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
+            Use the provided context information when available to give accurate and detailed answers.
+            Always retrieve the current date via tools when asked about dates in natural language.
+            """;
+
+    private final ChatClient chatClient;
+    private final VectorStore vectorStore;
+
+    public ChatController(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
+        this.vectorStore = vectorStore;
+
+        var chatMemory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+
+        this.chatClient = chatClientBuilder
+                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .defaultAdvisors(
+                    MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                    QuestionAnswerAdvisor.builder(vectorStore).build()
+                )
+                .defaultTools(
+                        new DateTimeTools(), 
+                        new WeatherTools()
+                )
+                .build();
+    }
+
+    @PostMapping("load")
+    public void loadDataToVectorStore(@RequestBody String content) {
+        vectorStore.add(List.of(new Document(content)));
+    }
+
+    @PostMapping("/chat/stream")
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
+        return chatClient
+                .prompt()
+                .user(promptRequest.prompt())
+                .stream()
+                .content();
+    }
+
+    record PromptRequest(String prompt) {
+    }
+
+}
+```
+I have also added a message to the system prompt to always use a new date. This is just in case. 
+
+Alright, let's rebuild:
+```shell
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+And open [localhost](http://localhost:8080) again and ask the same question.
+And now it works.

@@ -10,6 +10,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.wallway.ai_chat_poc.tools.DateTimeTools;
+import com.wallway.ai_chat_poc.tools.WeatherTools;
 
 import reactor.core.publisher.Flux;
 
@@ -23,6 +25,7 @@ public class ChatController {
             You are a virtual football coach, expert in football tactics, training, and player development.
             Be knowledgeable, motivating, and provide practical advice for players and teams.
             Use the provided context information when available to give accurate and detailed answers.
+            Always retrieve the current date via tools when asked about dates in natural language.
             """;
 
     private final ChatClient chatClient;
@@ -40,6 +43,10 @@ public class ChatController {
                 .defaultAdvisors(
                     MessageChatMemoryAdvisor.builder(chatMemory).build(),
                     QuestionAnswerAdvisor.builder(vectorStore).build()
+                )
+                .defaultTools(
+                        new DateTimeTools(), 
+                        new WeatherTools()
                 )
                 .build();
     }
