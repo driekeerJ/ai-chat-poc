@@ -3,7 +3,11 @@
 1. Go to `https://start.spring.io/`
 2. Choose at least `openAI`, `Thymeleaf` and `Web`
 3. Generate a project
-
+4. Remove the test class (not for now)
+5. Initialize the project as a git project so you can see the differences
+	1. `git init`
+	2. `git add .`
+	3. `git commit -am "initial commit"`
 ## Register your key for openAI and the model you will use
 Put the following setting in your `application.properties`. I have put it in my local properties that will not be uploaded to git, for obvious reasons.
 ```bash
@@ -33,7 +37,7 @@ public class AiChatPocApplication {
 
     @Bean
     public CommandLineRunner cli(ChatClient.Builder chatClientBuilder) {
-        return args -%3E {
+        return args -> {
             var chatClient = chatClientBuilder
                 .defaultSystem("You are a virtual football coach, expert in football tactics, training, and player development.")
                 .build();
@@ -54,6 +58,16 @@ public class AiChatPocApplication {
 
 ```
 
+Now start the application
+```bash
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
+```
+Ask:
+```
+What does football mean?
+```
+
 What do we do here?
 - `defaultSystem` sets the default system message. A system message is a short instruction that tells the AI how it should behave or what role it should play during the conversation.
 - `chatClient.prompt(scanner.nextLine())` just gets the text that you typed. This is also the trigger. 
@@ -63,10 +77,13 @@ What do we do here?
 Now test it. Build the project and start it with 'local' settings:
 ```bash
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
 Just ask it a question and see what it response it with. 
+```
+git commit -am "added commandline bot"
+```
 
 ## Now let's use a controller
 Lets first cleanup the basic application file by remove the commandline scanner:
@@ -127,7 +144,7 @@ public class ChatController {
 Build and run your application
 ```bash
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
 And run the following curl command from your commandline:
@@ -145,6 +162,9 @@ curl -X POST http://localhost:8080/api/chat \
 ```
 
 As you can see it answers it all at once. We also might be interested in having part of the answer already while it is generating the rest. For this we can use streaming. 
+```
+git commit -am "added RestController"
+```
 
 ## Use streaming for flow
 Change the controller by adding streaming:
@@ -175,7 +195,7 @@ public class ChatController {
     }
 
     @PostMapping("/chat/stream")
-    public Flux%3CString> chatStream(@RequestBody PromptRequest promptRequest) {
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
         return chatClient
                 .prompt()
                 .user(promptRequest.prompt())
@@ -192,7 +212,7 @@ As you can see, we will now return a `Flux` so we can async return what we get.
 Lets start the application again:
 ```bash
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
 And ask the same question but now on the stream endpoint:
@@ -203,6 +223,9 @@ curl -X POST http://localhost:8080/api/chat/stream \
 ```
 
 As you can see, the answer now comes in parts.
+```
+git commit -am "added streams"
+```
 ## Adding a frontend
 We have added Thymeleaf as a dependency at the start. We are now going to use that. 
 
@@ -477,15 +500,27 @@ public class WebController {
 And again, run the application:
 ```shell
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
-And now open `http://localhost:8080`, just ask it a question.
+And now open [localhost](http://localhost:8080), just ask it a question.
+```
+git add .
+git commit -am "added frontend"
+```
 
 ## Local memory
 The AI doesn't remember previous conversations because each request is completely independent - it's like talking to someone who has amnesia and forgets everything after each sentence. To make it remember, we need to store the conversation history and send it along with each new message so the AI can see the full context of what was discussed before.
 
 If you still have the application running, just tell it your name and then in the next prompt, ask it to tell you what your name is.
+
+```
+Hi my name is Jeroen
+```
+
+```
+What was my name again?
+```
 
 As you can see, it doesn't remember.
 
@@ -545,11 +580,22 @@ Now start the application again:
 
 ```shell
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
-And tell it your name. 
-Once it answered, ask it what your name was. 
+Now lets try it again on [localhost](http://localhost:8080)
+```
+Hi my name is Jeroen
+```
+
+```
+What was my name again?
+```
+
+Now commit it
+```
+git commit -am "added local memory"
+```
 ## RAG and vector databases
 ### Explanation
 RAG (Retrieval-Augmented Generation) is a way of making AI smarter by letting it look things up in a database before answering. Instead of relying only on what it has been trained on, the AI first searches a _vector database_ (a special kind of database that stores information in a way that makes it easy to find things that “mean” the same, not just things that look the same). This means the AI can pull in the most relevant facts and then generate a better, more accurate response for the user.
@@ -562,12 +608,6 @@ First, lets add the correct dependencies:
 ```gradle
 	implementation 'org.springframework.ai:spring-ai-advisors-vector-store'
 	implementation 'org.springframework.ai:spring-ai-vector-store'
-```
-
-Now, let's start our application:
-```shell
-./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
 ```
 
 Let's add the configuration to use a in memory vector store:
@@ -659,16 +699,32 @@ public class ChatController {
 }
 ```
 
-Let's now go to [localhost](http://localhost:8080) and ask it what 4-3-3 means. As you can see it doesn't know from what we provided. 
+Now, let's start our application:
+```shell
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
+```
+
+Let's now go to [localhost](http://localhost:8080) and ask:
+```
+What does it mean to play 17 over 22 within 30
+```
+
+As you see it doesn't respond correctly
 
 Let's add some information to the vector store:
 ```shell
 curl -X POST http://localhost:8080/api/load \
   -H "Content-Type: application/json" \
-  -d '{"content": "4-3-3 Formation: This is an attacking formation with 4 defenders, 3 midfielders, and 3 forwards. The wingers provide width and can cut inside or cross. The central midfielder acts as a playmaker. This formation is great for teams that want to control possession and create many attacking opportunities."}'
+  -d '{"content": "To play 17 over 22 within 30 means to play in an attacking formation with 4 defenders, 3 midfielders, and 3 forwards. The wingers provide width and can cut inside or cross. The central midfielder acts as a playmaker. This formation is great for teams that want to control possession and create many attacking opportunities."}'
 ```
 
 As you can see it now searches the vector store, finds something and uses that. 
+
+```
+git add .
+git commit -am "added vector"
+```
 ## Tooling
 ### Explanation
 Tools are like little external helpers you connect to an AI. On its own, the AI doesn’t know things like what today’s date is or what the weather will be tomorrow. By giving it a tool, you let the AI call out to another system that _does_ know this, and then use that information in its answer. So tools extend what the AI can do by giving it access to real data or specific actions.
@@ -687,15 +743,10 @@ First, let's create a folder 'tools' and add a DateTimeTool to get the datetime:
 package com.wallway.ai_chat_poc.tools;
 
 import java.time.format.DateTimeFormatter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 
 public class DateTimeTools {
-
-    private static final Logger logger = LoggerFactory.getLogger(DateTimeTools.class);
-
-    @Tool(description = "Get the current date and time")
+    @Tool(description = "Get the current date")
     public String getCurrentDateTime(String timeZone) {
         return java.time.ZonedDateTime.now(java.time.ZoneId.of(timeZone))
                 .format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
@@ -880,11 +931,19 @@ I have also added a message to the system prompt to always use a new date. This 
 Alright, let's rebuild:
 ```shell
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
 And open [localhost](http://localhost:8080) again and ask the same question.
+```
+what should I wear when I play coming Saturday against a team in Utrecht
+```
 And now it works.
+
+```
+git add .
+git commit -am "added tools"
+```
 ## MCP
 ### Explanation
 MCP (Model Context Protocol) is a standard way for AI systems to connect with external tools, databases, or apps. Instead of building a custom integration for each system, MCP gives AI a universal “language” to communicate. This makes it much easier to plug AI into different parts of a business without reinventing the wheel each time.
@@ -1093,7 +1152,7 @@ Now build your application
 
 ```shell
 ./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar
 ```
 
 And lets go to [localhost](http://localhost:8080) and ask:
