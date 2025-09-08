@@ -885,3 +885,220 @@ java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=loc
 
 And open [localhost](http://localhost:8080) again and ask the same question.
 And now it works.
+## MCP
+### Explanation
+MCP (Model Context Protocol) is a standard way for AI systems to connect with external tools, databases, or apps. Instead of building a custom integration for each system, MCP gives AI a universal “language” to communicate. This makes it much easier to plug AI into different parts of a business without reinventing the wheel each time.
+### Analogy
+Think of MCP as a universal translator for the AI. Without it, the AI would need to learn every individual dialect of every system it talks to. With MCP, it speaks one language, and the translator takes care of the rest. That way, it can quickly and smoothly interact with many different systems.
+### Implementation
+#### TeamInformation Service
+Let's say, we have a simple application running in our system that retrieves the team information. So, this is a different application than the chatbot application we are building. 
+We have a method to get all the teams:
+
+```java
+package com.wallway.teaminformation;
+
+import java.util.List;
+
+import org.springframework.ai.tool.annotation.Tool;
+
+public class TeamInformationService {
+
+    @Tool(description = "Get a list of all teams")
+    public List<Team> getAllTeams() {
+        return List.of(new Team("1", "Flying Meatballs United", "Alice, Bob"),
+                       new Team("2", "Banana Boots FC", "Charlie, David"),
+                       new Team("3", "Goalpost Goblins", "Eve, Frank"));
+    }
+
+    public record Team(String id, String name, String members) {}
+}
+```
+By using the `@Tool` annotation we make this known as a tool.
+
+We make sure there is a ToolCallbackProvider. The bean exposes the methods of `TeamInformationService` as tools that can be used by Spring AI components.
+```java
+package com.wallway.teaminformation;
+
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.tool.method.MethodToolCallbackProvider;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+
+@SpringBootApplication
+public class TeaminformationApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(TeaminformationApplication.class, args);
+	}
+
+	@Bean
+	public ToolCallbackProvider teamTools(TeamInformationService teamInformationService) {
+		return MethodToolCallbackProvider.builder().toolObjects(teamInformationService).build();
+	}
+}
+```
+
+And we use the following application properties:
+```
+spring.application.name=teaminformation
+server.port=8082
+
+# MCP Server Configuration
+spring.ai.mcp.server.name=teaminformation-store-spring
+spring.ai.mcp.server.version=1.0.0
+logging.level.org.springframework.ai=DEBUG
+```
+
+For future reference, this is the build.gradle settings:
+```gradle
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.5.5'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.wallway'
+version = '0.0.1-SNAPSHOT'
+description = 'Demo project for Spring Boot'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('springAiVersion', "1.0.1")
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.ai:spring-ai-starter-mcp-server-webmvc'
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+```
+
+Lets start this service
+```shell
+./gradlew build
+java -jar build/libs/teaminformation-0.0.1-SNAPSHOT.jar
+```
+#### ChatBot
+Now let's use this in our chatbot service:
+Add the following dependency:
+```
+	implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
+```
+
+The following property:
+```
+spring.ai.mcp.client.sse.connections.names.url=http://localhost:8082
+```
+
+And update the controller:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.tool.ToolCallbackProvider;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import com.wallway.ai_chat_poc.tools.DateTimeTools;
+import com.wallway.ai_chat_poc.tools.WeatherTools;
+
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("api")
+public class ChatController {
+
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
+            Use the provided context information when available to give accurate and detailed answers.
+            Always retrieve the current date via tools when asked about dates in natural language.
+            """;
+
+    private final ChatClient chatClient;
+    private final VectorStore vectorStore;
+
+    public ChatController(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, ToolCallbackProvider tools) {
+        this.vectorStore = vectorStore;
+
+        var chatMemory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+
+        this.chatClient = chatClientBuilder
+                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .defaultAdvisors(
+                    MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                    QuestionAnswerAdvisor.builder(vectorStore).build()
+                )
+                .defaultTools(
+                        new DateTimeTools(), 
+                        new WeatherTools()
+                )
+                .defaultToolCallbacks(tools)
+                .build();
+    }
+
+    @PostMapping("load")
+    public void loadDataToVectorStore(@RequestBody String content) {
+        vectorStore.add(List.of(new Document(content)));
+    }
+
+    @PostMapping("/chat/stream")
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
+        return chatClient
+                .prompt()
+                .user(promptRequest.prompt())
+                .stream()
+                .content();
+    }
+
+    record PromptRequest(String prompt) {
+    }
+
+}
+```
+Now build your application
+
+```shell
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+And lets go to [localhost](http://localhost:8080) and ask:
+```
+Give me a list of all teams
+```
+
+That's it.

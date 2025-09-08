@@ -5,6 +5,7 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,7 +32,7 @@ public class ChatController {
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
 
-    public ChatController(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
+    public ChatController(ChatClient.Builder chatClientBuilder, VectorStore vectorStore, ToolCallbackProvider tools) {
         this.vectorStore = vectorStore;
 
         var chatMemory = MessageWindowChatMemory.builder()
@@ -48,6 +49,7 @@ public class ChatController {
                         new DateTimeTools(), 
                         new WeatherTools()
                 )
+                .defaultToolCallbacks(tools)
                 .build();
     }
 
