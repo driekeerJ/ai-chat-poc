@@ -892,7 +892,7 @@ MCP (Model Context Protocol) is a standard way for AI systems to connect with ex
 Think of MCP as a universal translator for the AI. Without it, the AI would need to learn every individual dialect of every system it talks to. With MCP, it speaks one language, and the translator takes care of the rest. That way, it can quickly and smoothly interact with many different systems.
 ### Implementation
 #### TeamInformation Service
-Let's say, we have a simple application running in our system that retrieves the team information. So, this is a different application than the chatbot application we are building. 
+Let's say, we have a simple application running in our system that retrieves the team information. So, this is a different application than the chatbot application we are building. See [this github repo](https://github.com/driekeerJ/super-simple-mcp-service).
 We have a method to get all the teams:
 
 ```java
