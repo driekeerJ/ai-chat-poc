@@ -1,208 +1,4 @@
-# ai-chat-poc
-## Create project
-1. Go to `https://start.spring.io/`
-2. Choose at least `openAI`, `Thymeleaf` and `Web`
-3. Generate a project
-
-## Register your key for openAI and the model you will use
-Put the following setting in your `application.properties`. I have put it in my local properties that will not be uploaded to git, for obvious reasons.
-```bash
-spring.ai.openai.api-key=YOUR_OPENAI_API_KEY
-spring.ai.openai.chat.options.model=gpt-4.1-nano
-```
-
-## Add a commandline runner to your application
-```java
-package com.wallway.ai_chat_poc;
-
-import java.util.Scanner;
-
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.boot.CommandLineRunner;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
-
-@SpringBootApplication
-public class AiChatPocApplication {
-
-	public static void main(String[] args) {
-		SpringApplication.run(AiChatPocApplication.class, args);
-	}
-
-
-    @Bean
-    public CommandLineRunner cli(ChatClient.Builder chatClientBuilder) {
-        return args -> {
-            var chatClient = chatClientBuilder
-                .defaultSystem("You are a Unicorn Rentals Agent, expert in all sorts of things related to Unicorns and renting them.")
-                .build();
-
-            System.out.println("\nI am your Unicorn Rentals assistant.\n");
-            try (Scanner scanner = new Scanner(System.in)) {
-                while (true) {
-                    System.out.print("\nUSER: ");
-                    System.out.println("\nASSISTANT: " +
-                        chatClient.prompt(scanner.nextLine())
-                            .call()
-                            .content());
-                }
-            }
-        };
-    }
-}
-
-```
-
-What do we do here?
-- `defaultSystem` sets the default system message. A system message is a short instruction that tells the AI how it should behave or what role it should play during the conversation.
-- `chatClient.prompt(scanner.nextLine())` just gets the text that you typed. This is also the trigger. 
-- `call` will do the actual call
-- `content` retrieves the 'content' out of the response model.
-
-Now test it. Build the project and start it with 'local' settings:
-```bash
-./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
-```
-
-Just ask it a question and see what it response it with. 
-
-## Now let's use a controller
-Lets first cleanup the basic application file by remove the commandline scanner:
-```java
-package com.wallway.ai_chat_poc;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-public class AiChatPocApplication {
-
-	public static void main(String[] args) {
-		SpringApplication.run(AiChatPocApplication.class, args);
-	}
-}
-```
-And now create the following RestController in your system
-```java
-package com.wallway.ai_chat_poc;
-
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-@RestController
-@RequestMapping("api")
-public class ChatController {
-    private static final String DEFAULT_SYSTEM_PROMPT = """
-            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
-            Be friendly, helpful, and concise in your responses.
-            """;
-    private final ChatClient chatClient;
-
-    public ChatController(ChatClient.Builder chatClient) {
-        this.chatClient = chatClient
-                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
-                .build();
-    }
-
-    @PostMapping("chat")
-    public String chat(@RequestBody PromptRequest promptRequest) {
-        var chatResponse = chatClient
-                .prompt()
-                .user(promptRequest.prompt())
-                .call()
-                .chatResponse();
-        return (chatResponse != null) ? chatResponse.getResult().getOutput().getText() : null;
-    }
-
-    record PromptRequest(String prompt) {
-    }
-}
-```
-
-Build and run your application
-```bash
-./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
-```
-
-And run the following curl command from your commandline:
-```bash
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "How much do you like unicorns?"}'
-```
-
-Now try the following:
-```bash
-curl -X POST http://localhost:8080/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Tell me a short story about unicorns in max 3 paragraphs?"}'
-```
-
-As you can see it answers it all at once. We also might be interested in having part of the answer already while it is generating the rest. For this we can use streaming. 
-
-## Use streaming for flow
-Change the controller by adding streaming:
-```java
-package com.wallway.ai_chat_poc;
-
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
-
-@RestController
-@RequestMapping("api")
-public class ChatController {
-    private static final String DEFAULT_SYSTEM_PROMPT = """
-            You are a helpful AI assistant for Unicorn Rentals, a fictional company that rents unicorns.
-            Be friendly, helpful, and concise in your responses.
-            """;
-
-    private final ChatClient chatClient;
-
-    public ChatController(ChatClient.Builder chatClient) {
-        this.chatClient = chatClient
-                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
-                .build();
-    }
-
-    @PostMapping("/chat/stream")
-    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
-        return chatClient
-                .prompt()
-                .user(promptRequest.prompt())
-                .stream()
-                .content();
-    }
-
-    record PromptRequest(String prompt) {
-    }
-}
-```
-As you can see, we will now return a `Flux` so we can async return what we get. 
-
-Lets start the application again:
-```bash
-./gradlew build
-java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
-```
-
-And ask the same question but now on the stream endpoint:
-```bash
-curl -X POST http://localhost:8080/api/chat/stream \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Tell me a short story about unicorns in max 3 paragraphs?"}'
-```
-
-As you can see, the answer now comes in parts.](<# ai-chat-poc
+# AI-chat-poc
 ## Create project
 1. Go to `https://start.spring.io/`
 2. Choose at least `openAI`, `Thymeleaf` and `Web`
@@ -754,3 +550,122 @@ java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=loc
 
 And tell it your name. 
 Once it answered, ask it what your name was. 
+## RAG and vector databases
+### Explanation
+RAG (Retrieval-Augmented Generation) is a way of making AI smarter by letting it look things up in a database before answering. Instead of relying only on what it has been trained on, the AI first searches a _vector database_ (a special kind of database that stores information in a way that makes it easy to find things that “mean” the same, not just things that look the same). This means the AI can pull in the most relevant facts and then generate a better, more accurate response for the user.
+
+### Analogy
+Think of the AI as a very skilled storyteller who sometimes forgets exact details. A vector database is like a super-organized library where the books are sorted by meaning instead of by title. With RAG, before telling the story, the AI quickly walks into that library, grabs the right books with the details it needs, and then weaves them into its answer. That way, the story is both creative _and_ factually grounded.
+
+### Implementation
+First, lets add the correct dependencies:
+```gradle
+	implementation 'org.springframework.ai:spring-ai-advisors-vector-store'
+	implementation 'org.springframework.ai:spring-ai-vector-store'
+```
+
+Now, let's start our application:
+```shell
+./gradlew build
+java -jar build/libs/ai-chat-poc-0.0.1-SNAPSHOT.jar --spring.profiles.active=local
+```
+
+Let's add the configuration to use a in memory vector store:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.embedding.EmbeddingModel;
+import org.springframework.ai.vectorstore.SimpleVectorStore;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class VectorStoreConfig {
+
+    @Bean
+    public VectorStore simpleVectorStore(EmbeddingModel embeddingModel) {
+        return SimpleVectorStore.builder(embeddingModel).build();
+    }
+}
+
+```
+
+Let's update our controller:
+```java
+package com.wallway.ai_chat_poc;
+
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
+import org.springframework.ai.chat.memory.MessageWindowChatMemory;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import reactor.core.publisher.Flux;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("api")
+public class ChatController {
+
+    private static final String DEFAULT_SYSTEM_PROMPT = """
+            You are a virtual football coach, expert in football tactics, training, and player development.
+            Be knowledgeable, motivating, and provide practical advice for players and teams.
+            Use the provided context information when available to give accurate and detailed answers.
+            """;
+
+    private final ChatClient chatClient;
+    private final VectorStore vectorStore;
+
+    public ChatController(ChatClient.Builder chatClientBuilder, VectorStore vectorStore) {
+        this.vectorStore = vectorStore;
+
+        var chatMemory = MessageWindowChatMemory.builder()
+                .maxMessages(20)
+                .build();
+
+        this.chatClient = chatClientBuilder
+                .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+                .defaultAdvisors(
+                    MessageChatMemoryAdvisor.builder(chatMemory).build(),
+                    QuestionAnswerAdvisor.builder(vectorStore).build()
+                )
+                .build();
+    }
+
+    @PostMapping("load")
+    public void loadDataToVectorStore(@RequestBody String content) {
+        vectorStore.add(List.of(new Document(content)));
+    }
+
+    @PostMapping("/chat/stream")
+    public Flux<String> chatStream(@RequestBody PromptRequest promptRequest) {
+        return chatClient
+                .prompt()
+                .user(promptRequest.prompt())
+                .stream()
+                .content();
+    }
+
+    record PromptRequest(String prompt) {
+    }
+
+}
+```
+
+Let's now go to [localhost](http://localhost:8080) and ask it what 4-3-3 means. As you can see it doesn't know from what we provided. 
+
+Let's add some information to the vector store:
+```shell
+curl -X POST http://localhost:8080/api/load \
+  -H "Content-Type: application/json" \
+  -d '{"content": "4-3-3 Formation: This is an attacking formation with 4 defenders, 3 midfielders, and 3 forwards. The wingers provide width and can cut inside or cross. The central midfielder acts as a playmaker. This formation is great for teams that want to control possession and create many attacking opportunities."}'
+```
+
+As you can see it now searches the vector store, finds something and uses that. 
