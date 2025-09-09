@@ -944,6 +944,67 @@ And now it works.
 git add .
 git commit -am "added tools"
 ```
+
+## Natural Language Date Processing
+### Problem
+When users ask questions using natural language dates like "What should I wear this Saturday?" or "What's the weather tomorrow?", the AI model often guesses or hallucinates dates instead of using the current date. This leads to incorrect weather data requests and unreliable responses.
+
+### Solution
+We've added a `NaturalLanguageDateTools` that converts Dutch natural language date expressions to proper ISO dates before the AI model processes them.
+
+### Implementation
+Create a new tool for date parsing:
+```java
+package com.wallway.ai_chat_poc.tools;
+
+import org.springframework.ai.tool.annotation.Tool;
+import java.time.*;
+
+public class NaturalLanguageDateTools {
+    
+    @Tool(description = "Converts Dutch natural language date to ISO date (YYYY-MM-DD). Supports: vandaag, morgen, overmorgen, weekdays, next week + weekday.")
+    public String parseDutchDateToIso(String naturalLanguageDate) {
+        // Implementation handles:
+        // - vandaag, morgen, overmorgen
+        // - maandag, dinsdag, woensdag, etc.
+        // - volgende week zaterdag
+        // - ISO dates as fallback
+    }
+}
+```
+
+Update the ChatController to include the new tool:
+```java
+this.chatClient = chatClientBuilder
+    .defaultSystem(DEFAULT_SYSTEM_PROMPT)
+    .defaultAdvisors(
+        MessageChatMemoryAdvisor.builder(chatMemory).build()
+    )
+    .defaultTools(
+            new DateTimeTools(), 
+            new WeatherTools(),
+            new NaturalLanguageDateTools()  // Add this tool
+    )
+    .build();
+```
+
+### Why This Works Better
+- **Prevents hallucination**: The AI no longer guesses dates
+- **Accurate weather data**: Uses the correct date for weather API calls  
+- **Dutch language support**: Handles common Dutch date expressions
+- **Fallback support**: Still accepts ISO dates if provided
+- **Timezone aware**: Always uses Netherlands timezone
+
+Now when you ask "What should I wear this Saturday in Utrecht?", the AI will:
+1. Use NaturalLanguageDateTools to convert "Saturday" to the correct ISO date
+2. Use WeatherTools with the correct date to get accurate weather data
+3. Provide clothing recommendations based on real weather forecasts
+
+```
+git add .
+git commit -am "added natural language date processing"
+```
+
 ## MCP
 ### Explanation
 MCP (Model Context Protocol) is a standard way for AI systems to connect with external tools, databases, or apps. Instead of building a custom integration for each system, MCP gives AI a universal “language” to communicate. This makes it much easier to plug AI into different parts of a business without reinventing the wheel each time.

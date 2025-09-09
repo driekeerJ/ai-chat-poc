@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import com.wallway.ai_chat_poc.tools.DateTimeTools;
+import com.wallway.ai_chat_poc.tools.NaturalLanguageDateTools;
 import com.wallway.ai_chat_poc.tools.WeatherTools;
 
 import reactor.core.publisher.Flux;
@@ -22,6 +23,7 @@ import java.util.List;
 public class ChatController {
 
     private static final String DEFAULT_SYSTEM_PROMPT = """
+            NEVER GUESS THE DATE YOURSELF! DO NOT MAKE UP DATES! DO NOT HALLUCINATE DATES!
             You are a virtual football coach, expert in football tactics, training, and player development.
             Be knowledgeable, motivating, and provide practical advice for players and teams.
             Use the provided context information when available to give accurate and detailed answers.
@@ -46,7 +48,8 @@ public class ChatController {
                 )
                 .defaultTools(
                         new DateTimeTools(), 
-                        new WeatherTools()
+                        new WeatherTools(),
+                        new NaturalLanguageDateTools()
                 )
                 .defaultToolCallbacks(tools)
                 .build();
