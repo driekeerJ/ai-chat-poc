@@ -1161,3 +1161,84 @@ Give me a list of all teams
 ```
 
 That's it.
+
+## Using a local LLM
+### Running a Local LLM Model with Docker
+
+You can run a language model locally using the [Docker Model Runner](https://docs.docker.com/ai/model-runner/).  
+This is useful for development and privacy, and it exposes an **OpenAI-compatible API** on `http://localhost:12434`.
+
+1. **Enable the Docker Model Runner**  
+Open Docker Desktop → **Settings** → **AI**  
+- Enable **Docker Model Runner**  
+- Enable **Host-side TCP endpoint** (default port: `12434`)
+
+2. **Pull a model**  
+For example, to pull the Gemma 3 model:
+```bash
+docker model pull ai/gemma3:latest
+```
+
+3. **Test the model**
+Run a one-off prompt directly:
+
+```bash
+docker model run ai/gemma3:latest "Tell me a joke about Spring AI."
+```
+
+Or call the API endpoint:
+
+```bash
+curl http://localhost:12434/engines/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "ai/gemma3:latest",
+    "messages":[{"role":"user","content":"Explain quantization in 1 sentence."}]
+  }'
+```
+
+4. **Update your application configuration**
+Point Spring AI to the local server in `application.yml`:
+```yaml
+spring:
+  ai:
+    model:
+      chat: openai
+    openai:
+      base-url: http://localhost:12434
+      chat:
+        completions-path: /engines/v1/chat/completions
+        options:
+          model: ai/gemma3:latest
+      api-key: dummy
+```
+
+Now your Spring AI application will use the local Docker model for chat and other tasks.
+
+> **Tip:** Replace `ai/gemma3:latest` with any other supported model tag from [Docker Hub](https://hub.docker.com/r/ai).
+
+### Important Note about Vector Store and Embeddings
+
+When using a local LLM like `gemma3:latest` through Ollama, the **Vector Store functionality is not available** because:
+
+1. **Missing Embedding Model**: Vector stores require an embedding model to convert text into numerical vectors for similarity search
+2. **Ollama Limitations**: Most local LLM setups (including Ollama with `gemma3:latest`) only provide chat completions, not embedding endpoints
+3. **API Incompatibility**: The Spring AI framework expects an OpenAI-compatible `/v1/embeddings` endpoint which local models typically don't provide
+
+### Current Workaround
+In the `ChatController`, the `QuestionAnswerAdvisor` (which uses the vector store) is commented out:
+
+```java
+.defaultAdvisors(
+    MessageChatMemoryAdvisor.builder(chatMemory).build()
+    // QuestionAnswerAdvisor.builder(vectorStore).build() // Disabled for local LLM
+)
+```
+
+### To Use Vector Store Features
+If you need vector store functionality, you have these options:
+1. Use OpenAI's hosted API (with embeddings support)
+2. Set up a separate embedding service (like `text-embedding-ada-002` via OpenAI API)
+3. Use a local embedding model setup that provides OpenAI-compatible endpoints
+
+For development and basic chat functionality, the current setup works perfectly without vector store features.

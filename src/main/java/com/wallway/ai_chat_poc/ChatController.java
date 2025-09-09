@@ -2,7 +2,6 @@ package com.wallway.ai_chat_poc;
 
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -42,8 +41,8 @@ public class ChatController {
         this.chatClient = chatClientBuilder
                 .defaultSystem(DEFAULT_SYSTEM_PROMPT)
                 .defaultAdvisors(
-                    MessageChatMemoryAdvisor.builder(chatMemory).build(),
-                    QuestionAnswerAdvisor.builder(vectorStore).build()
+                    MessageChatMemoryAdvisor.builder(chatMemory).build()
+                    // QuestionAnswerAdvisor.builder(vectorStore).build()
                 )
                 .defaultTools(
                         new DateTimeTools(), 

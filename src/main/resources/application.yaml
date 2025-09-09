@@ -1,0 +1,35 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: ai-chat-poc
+  thymeleaf:
+    cache: false
+    prefix: classpath:/templates/
+    suffix: .html
+  ai:
+    model:
+      chat: openai
+    openai:
+      base-url: http://localhost:12434
+      chat:
+        completions-path: /engines/v1/chat/completions
+        options:
+          model: ai/gemma3:latest
+      api-key: dummy
+    mcp:
+      client:
+        toolcallback:
+          enabled: true
+logging:
+  level:
+    org.springframework.ai.mcp: TRACE
+    org.springframework.ai.mcp.client: TRACE
+    org.springframework.ai.mcp.SyncMcpToolCallbackProvider: TRACE
+    org.springframework.ai.mcp.client.autoconfigure: TRACE
+    org.springframework.ai.tool: DEBUG
+    org.springframework.ai.chat: DEBUG
+    org.springframework.web.client: DEBUG
+    org.springframework.http: DEBUG
+    com.wallway.ai_chat_poc: DEBUG
+    root: INFO
